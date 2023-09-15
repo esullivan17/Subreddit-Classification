@@ -1,0 +1,74 @@
+library(data.table)
+library(Rtsne)
+library(ggplot2)
+
+
+k_train <- read.csv(file = './project/volume/data/raw/kaggle_train.csv', header = TRUE)
+k_test <- read.csv(file = './project/volume/data/raw/kaggle_test.csv', header = TRUE)
+test <- read.csv(file = './project/volume/data/raw/test_emb.csv', header = TRUE)
+train <- read.csv(file = './project/volume/data/raw/train_emb.csv', header = TRUE)
+
+k_test$reddit <- "Unknown"
+train_combined <- cbind(train, k_train)
+test_combined <- cbind(test, k_test)
+master <- rbind(train_combined, test_combined)
+master$reddit <- as.integer(as.factor(master$reddit))
+master$reddit <- master$reddit - 1
+#one instance of reddit column being above 10, fixes to force a 0-10 range
+master$reddit <- ifelse(master$reddit > 10, 10, master$reddit)
+emb <-  rbind(train, test)
+
+
+
+pca<-prcomp(emb, scale. = TRUE)
+
+
+
+# use the unclass() function to get the data in PCA space
+pca_dt<-data.table(unclass(pca)$x)
+
+
+set.seed(3)
+#tsne<-Rtsne(pca_dt,pca = F,perplexity=60,check_duplicates = F)
+#tsne_80<-Rtsne(pca_dt,pca = F,perplexity=80,check_duplicates = F)
+tsne_100<-Rtsne(pca_dt,pca = F,perplexity=100,check_duplicates = F)
+#tsne_120<-Rtsne(pca_dt,pca = F,perplexity=120,check_duplicates = F)
+#tsne_150<-Rtsne(pca_dt,pca = F,perplexity=150,check_duplicates = F)
+
+
+# grab out the coordinates
+#tsne_dt<-data.table(tsne$Y)
+#tsne_80dt<- data.table(tsne_80$Y)
+tsne_100dt<-data.table(tsne_100$Y)
+#tsne_120dt<-data.table(tsne_120$Y)
+#tsne_150dt<-data.table(tsne_150$Y)
+  
+#tsne_dt$reddit <- master$reddit
+#train_data <- head(tsne_dt, 250)
+#test_data <- tail(tsne_dt, -250)
+
+#tsne_80dt$reddit <- master$reddit
+#train_data <- head(tsne_80dt, 250)
+#test_data <- tail(tsne_80dt, -250)
+
+tsne_100dt$reddit <- master$reddit
+train_data <- head(tsne_100dt, 250)
+test_data <- tail(tsne_100dt, -250)
+
+#tsne_120dt$reddit <- master$reddit
+#train_data <- head(tsne_120dt, 250)
+#test_data <- tail(tsne_120dt, -250)
+
+#tsne_150dt$reddit <- master$reddit
+#train_data <- head(tsne_150dt, 250)
+#test_data <- tail(tsne_150dt, -250)
+
+rnd_idx <- c(1:250, sample(251:25250, 1000))
+subset_tsne <- tsne_100dt[rnd_idx, ]
+subset_tsne <- tsne_100dt[1:250, ]
+ggplot(subset_tsne, aes(x = V1, y = V2, color = factor(subset_tsne$reddit))) + 
+  geom_point(alpha=0.5) + 
+  ggtitle("t-SNE Plot")
+
+fwrite(train_data,'./project/volume/data/interim/train_data.csv')
+fwrite(test_data,'./project/volume/data/interim/test_data.csv')
