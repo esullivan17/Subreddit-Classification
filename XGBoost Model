@@ -1,0 +1,71 @@
+#load in libraries
+library(data.table)
+library(xgboost)
+
+
+#reading data 
+test<-fread("./project/volume/data/interim/test_data.csv")
+train<-fread("./project/volume/data/interim/train_data.csv")
+
+
+y.train<-train$reddit
+train$reddit <- NULL
+test$reddit <- NULL
+
+
+#create dmatrix
+dtrain <- xgb.DMatrix(as.matrix(train),label=y.train,missing=NA)
+dtest <- xgb.DMatrix(as.matrix(test),missing=NA)
+hyper_perm_tune<-NULL
+
+#parameter fixing 
+param <- list(  objective           = "multi:softprob",
+                eval_metric = "mlogloss", 
+                num_class = 11,
+                gamma               =0.1,
+                booster             = "gbtree",
+                eta                 = 0.2,
+                max_depth           = 8,
+                min_child_weight    = 1.0,
+                subsample           = 1,
+                colsample_bytree    = 1,
+                tree_method = 'hist'
+)
+#gamma: 0.01, 0.05
+#eta: 0.05, .1, .5
+#max depth: 3, 5, 10, 20
+#min child: 1,5,25,50
+#subsample, colsample, .95, .9
+#k fold cross validation 
+XGBm<-xgb.cv( params=param,nfold=5,nrounds=10000,missing=NA,data=dtrain,print_every_n=1,early_stopping_rounds=25)
+
+#track progress
+best_ntrees<-unclass(XGBm)$best_iteration
+
+new_row<-data.table(t(param))
+
+new_row$best_ntrees<-best_ntrees
+
+test_error<-unclass(XGBm)$evaluation_log[best_ntrees,]$test_rmse_mean
+new_row$test_error<-test_error
+hyper_perm_tune<-rbind(new_row,hyper_perm_tune)
+
+
+watchlist <- list( train = dtrain)
+#train model
+XGBm<-xgb.train( params=param,nrounds=best_ntrees,missing=NA,data=dtrain,watchlist=watchlist,print_every_n=1)
+
+#set predictions for submission
+pred<-predict(XGBm, newdata = dtest)
+results<-matrix(pred,ncol=11,byrow=T)
+results<-data.table(results)
+
+
+# reformat
+results<-matrix(pred,ncol=11,byrow=T)
+
+
+
+submit <- read.csv(file = './project/volume/data/raw/example_sub.csv', header = TRUE)
+submit[, -1] <- results
+fwrite(submit,"./project/volume/data/processed/submit.csv")
